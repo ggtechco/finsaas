@@ -1,0 +1,17 @@
+//@version=5
+strategy("SMA Crossover", overlay=true, initial_capital=10000)
+
+fast_length = input.int(defval=10, title="Fast Length", minval=1, maxval=100)
+slow_length = input.int(defval=20, title="Slow Length", minval=1, maxval=200)
+
+fast_ma = ta.sma(close, fast_length)
+slow_ma = ta.sma(close, slow_length)
+
+if ta.crossover(fast_ma, slow_ma)
+    strategy.entry("long", strategy.long)
+
+if ta.crossunder(fast_ma, slow_ma)
+    strategy.close("long")
+
+plot(fast_ma, title="Fast MA", color=color.blue)
+plot(slow_ma, title="Slow MA", color=color.red)

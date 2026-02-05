@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinSaaS Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar-main">
+        <a class="navbar-brand" href="/">
+            <span class="logo">F</span>
+            FinSaaS
+        </a>
+        <span class="navbar-subtitle">BACKTEST &amp; OPTIMIZATION ENGINE</span>
+    </nav>
+
+    <div class="app-layout">
+        <!-- ── Left Sidebar ── -->
+        <aside class="sidebar">
+            <!-- 1. Data -->
+            <div class="section-label"><span class="num">1</span> Data</div>
+            <div class="csv-drop" id="csvDrop">
+                <div class="drop-icon">&#8686;</div>
+                Drop CSV here or click to upload
+            </div>
+            <input type="file" id="csvFile" accept=".csv" style="display:none">
+            <div class="file-badge" id="fileInfo"></div>
+            <div class="file-list" id="fileList"></div>
+
+            <!-- 2. Strategy -->
+            <div class="section-label"><span class="num">2</span> Strategy</div>
+            <select id="strategySelect">
+                <option value="">-- Select strategy --</option>
+            </select>
+
+            <!-- 3. Parameters -->
+            <div class="section-label"><span class="num">3</span> Parameters</div>
+            <div id="paramsContainer"></div>
+
+            <!-- 4. Config -->
+            <div class="section-label"><span class="num">4</span> Config</div>
+            <div style="margin-bottom:0.4rem">
+                <label class="form-label">Symbol</label>
+                <input type="text" class="form-control" id="symbol" value="BTCUSDT">
+            </div>
+            <div style="margin-bottom:0.4rem">
+                <label class="form-label">Initial Capital</label>
+                <input type="number" class="form-control" id="capital" value="10000" step="1000">
+            </div>
+            <div style="margin-bottom:0.4rem">
+                <label class="form-label">Commission (%)</label>
+                <input type="number" class="form-control" id="commission" value="0.001" step="0.0001">
+            </div>
+            <div style="margin-bottom:0.4rem">
+                <label class="form-label">Slippage (%)</label>
+                <input type="number" class="form-control" id="slippage" value="0.0005" step="0.0001">
+            </div>
+
+            <!-- 5. Run -->
+            <div class="section-label"><span class="num">5</span> Run</div>
+            <button class="btn-backtest" id="btnBacktest">&#9654; Run Backtest</button>
+            <div style="height:0.5rem"></div>
+            <div class="opt-row">
+                <select id="optMethod">
+                    <option value="grid">Grid Search</option>
+                    <option value="genetic">Genetic</option>
+                </select>
+                <select id="optObjective">
+                    <option value="sharpe">Sharpe</option>
+                    <option value="total_return">Return</option>
+                    <option value="profit_factor">Profit Factor</option>
+                </select>
+            </div>
+            <button class="btn-optimize" id="btnOptimize">Optimize</button>
+        </aside>
+
+        <!-- ── Main Content ── -->
+        <main class="main-content">
+            <!-- Error Alert -->
+            <div class="error-alert" id="errorAlert">
+                <span id="errorMsg"></span>
+                <button class="error-close" onclick="document.getElementById('errorAlert').classList.remove('visible')">&times;</button>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="loading-overlay" id="spinner">
+                <div class="loader"></div>
+                <div class="loading-text">Running backtest...</div>
+            </div>
+
+            <!-- Placeholder -->
+            <div class="placeholder-view" id="placeholder">
+                <div class="placeholder-icon">&#128202;</div>
+                <h3>Welcome to FinSaaS</h3>
+                <p>Upload a CSV file, select a strategy, configure parameters and run a backtest to visualize results.</p>
+            </div>
+
+            <!-- Backtest Results -->
+            <div class="results-view" id="results">
+                <!-- Metric Cards -->
+                <div class="metrics-grid" id="metricsCards"></div>
+
+                <!-- Equity Curve -->
+                <div class="chart-card">
+                    <div class="chart-header"><span class="icon">&#128200;</span> Equity Curve</div>
+                    <div class="chart-body">
+                        <div class="chart-container">
+                            <canvas id="equityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drawdown -->
+                <div class="chart-card">
+                    <div class="chart-header"><span class="icon">&#128201;</span> Drawdown</div>
+                    <div class="chart-body">
+                        <div class="chart-container small">
+                            <canvas id="drawdownChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trade Table -->
+                <div class="trades-card">
+                    <div class="chart-header"><span class="icon">&#128203;</span> Trades</div>
+                    <div class="trades-wrapper">
+                        <table class="trades-table" id="tradesTable">
+                            <thead>
+                                <tr>
+                                    <th>Entry</th>
+                                    <th>Exit</th>
+                                    <th>Side</th>
+                                    <th>Entry $</th>
+                                    <th>Exit $</th>
+                                    <th>P&amp;L</th>
+                                    <th>P&amp;L%</th>
+                                    <th>Bars</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Optimize Results -->
+            <div class="optimize-view" id="optimizeResults">
+                <div class="chart-card">
+                    <div class="chart-header"><span class="icon">&#9881;</span> Optimization Results</div>
+                    <div class="chart-body" id="optimizeSummary"></div>
+                </div>
+                <div class="trades-card">
+                    <div class="chart-header"><span class="icon">&#128203;</span> Trials (Top 50)</div>
+                    <div class="trades-wrapper">
+                        <table class="trades-table" id="optimizeTrials">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Parameters</th>
+                                    <th>Objective</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/charts.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

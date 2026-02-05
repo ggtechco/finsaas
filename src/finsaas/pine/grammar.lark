@@ -1,0 +1,122 @@
+// Pine Script v5 Grammar (subset) for Lark parser
+// Supports: variables, inputs, functions, if/else, for, strategy calls, ta.* calls
+
+start: (statement NEWLINE?)*
+
+?statement: version_decl
+          | indicator_decl
+          | strategy_decl
+          | var_decl
+          | input_decl
+          | assignment
+          | reassignment
+          | if_statement
+          | for_loop
+          | while_loop
+          | function_def
+          | expr_statement
+          | plot_call
+          | COMMENT
+          | NEWLINE
+
+// Declarations
+version_decl: "//@version=" INT
+indicator_decl: "indicator" "(" kw_args ")"
+strategy_decl: "strategy" "(" kw_args ")"
+
+// Variable declarations
+var_decl: "var"? type_hint? IDENTIFIER "=" expr
+input_decl: IDENTIFIER "=" "input" ("." IDENTIFIER)? "(" kw_args ")"
+
+// Assignment
+assignment: IDENTIFIER "=" expr
+reassignment: IDENTIFIER ":=" expr
+
+// Type hints
+type_hint: "int" | "float" | "bool" | "string" | "color" | "series" type_hint?
+
+// If statement
+if_statement: "if" expr NEWLINE INDENT body DEDENT ("else" "if" expr NEWLINE INDENT body DEDENT)* ("else" NEWLINE INDENT body DEDENT)?
+
+// Loops
+for_loop: "for" IDENTIFIER "=" expr "to" expr ("by" expr)? NEWLINE INDENT body DEDENT
+while_loop: "while" expr NEWLINE INDENT body DEDENT
+
+// Function definition
+function_def: IDENTIFIER "(" param_list? ")" "=>" NEWLINE INDENT body DEDENT
+            | IDENTIFIER "(" param_list? ")" "=>" expr
+param_list: IDENTIFIER ("," IDENTIFIER)*
+
+body: statement+
+
+// Expressions
+?expr: ternary_expr
+
+?ternary_expr: or_expr ("?" expr ":" expr)?
+
+?or_expr: and_expr ("or" and_expr)*
+
+?and_expr: not_expr ("and" not_expr)*
+
+?not_expr: "not" not_expr -> not_op
+         | comparison
+
+?comparison: add_expr (COMP_OP add_expr)?
+
+?add_expr: mul_expr (("+"|"-") mul_expr)*
+
+?mul_expr: unary_expr (("*"|"/"|"%") unary_expr)*
+
+?unary_expr: "-" unary_expr -> neg
+           | "+" unary_expr -> pos
+           | postfix_expr
+
+?postfix_expr: primary ("[" expr "]")* ("." IDENTIFIER ("(" call_args ")")? )*
+
+?primary: "(" expr ")"
+        | function_call
+        | number
+        | string
+        | bool_literal
+        | na_literal
+        | color_literal
+        | IDENTIFIER
+
+function_call: IDENTIFIER "(" call_args ")"
+             | IDENTIFIER "." IDENTIFIER "(" call_args ")"
+
+call_args: (expr ("," expr)*)? ("," kw_arg)* ","?
+kw_args: (kw_arg ("," kw_arg)*)? ","?
+kw_arg: IDENTIFIER "=" expr
+
+// Plot
+plot_call: "plot" "(" call_args ")"
+
+// Expression statement (function calls as statements)
+expr_statement: expr
+
+// Literals
+number: FLOAT | INT
+string: ESCAPED_STRING
+bool_literal: "true" | "false"
+na_literal: "na"
+color_literal: COLOR
+
+// Comparison operators
+COMP_OP: ">=" | "<=" | "!=" | "==" | ">" | "<"
+
+// Identifiers and basic tokens
+IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_]*/
+COLOR: /#[0-9a-fA-F]{6,8}/ | /color\.[a-z]+/
+COMMENT: /\/\/.*/
+
+%import common.INT
+%import common.FLOAT
+%import common.ESCAPED_STRING
+%import common.NEWLINE
+%import common.WS_INLINE
+
+%declare INDENT DEDENT
+
+%ignore WS_INLINE
+%ignore COMMENT

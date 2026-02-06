@@ -25,6 +25,22 @@ BUILTIN_FUNCTIONS = {
     "ta.sma", "ta.ema", "ta.rsi", "ta.macd", "ta.crossover", "ta.crossunder",
     "ta.highest", "ta.lowest", "ta.atr", "ta.bb", "ta.change", "ta.stdev",
     "ta.rma", "ta.tr",
+    # Faz 1
+    "ta.smma", "ta.cross", "ta.mom", "ta.roc",
+    # Faz 2
+    "ta.wma", "ta.hma", "ta.vwma",
+    # Faz 3
+    "ta.stoch", "ta.pivothigh", "ta.pivotlow",
+    # Faz 4
+    "ta.dmi", "ta.linreg",
+    # Faz 5
+    "ta.cci", "ta.mfi", "ta.wpr", "ta.obv", "ta.vwap", "ta.cum",
+    # Faz 6
+    "ta.kc", "ta.supertrend", "ta.sar",
+    # Faz 7
+    "ta.rising", "ta.falling", "ta.variance", "ta.median",
+    "ta.correlation", "ta.highestbars", "ta.lowestbars",
+    "ta.bbw", "ta.kcw", "ta.barsince", "ta.valuewhen",
     "math.abs", "math.max", "math.min", "math.round", "math.ceil",
     "math.floor", "math.sign", "math.pow", "math.sqrt", "math.log", "math.exp",
     "strategy.entry", "strategy.exit", "strategy.close", "strategy.close_all",

@@ -5,6 +5,7 @@ python-multipart>=0.0.6
 pydantic>=2.0
 pydantic-settings>=2.0
 sqlalchemy>=2.0
+psycopg[binary]>=3.1
 alembic>=1.13
 lark>=1.1
 deap>=1.4

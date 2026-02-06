@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy project files and install
 COPY pyproject.toml .
 COPY src/ src/
-COPY tests/fixtures/ tests/fixtures/
 
 RUN pip install --no-cache-dir .
 

@@ -15,8 +15,8 @@ class SMACrossover(Strategy):
     closes when fast SMA crosses below slow SMA.
     """
 
-    fast_length = IntParam(default=10, min_val=2, max_val=100, step=1, description="Fast SMA period")
-    slow_length = IntParam(default=20, min_val=5, max_val=200, step=1, description="Slow SMA period")
+    fast_length = IntParam(default=10, min_val=2, max_val=100, step=5, description="Fast SMA period")
+    slow_length = IntParam(default=20, min_val=5, max_val=200, step=10, description="Slow SMA period")
 
     def on_init(self) -> None:
         self.fast_ma = self.create_series("fast_ma")
@@ -39,7 +39,7 @@ class RSIMeanReversion(Strategy):
     closes when RSI rises above overbought level.
     """
 
-    rsi_length = IntParam(default=14, min_val=2, max_val=50, step=1, description="RSI period")
+    rsi_length = IntParam(default=14, min_val=2, max_val=50, step=2, description="RSI period")
     oversold = FloatParam(default=30.0, min_val=10.0, max_val=50.0, step=5.0, description="Oversold level")
     overbought = FloatParam(default=70.0, min_val=50.0, max_val=90.0, step=5.0, description="Overbought level")
 

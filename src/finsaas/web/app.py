@@ -18,6 +18,12 @@ from finsaas.web.routes import backtest, data, optimize, strategies
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Seed sample data if not present
+    sample = UPLOAD_DIR / "sample_btcusdt_1h.csv"
+    if not sample.exists():
+        from finsaas.data.sample_data import generate_sample_csv
+
+        sample.write_text(generate_sample_csv())
     # Import example strategies so they register
     import finsaas.strategy.examples  # noqa: F401
     yield

@@ -1,11 +1,12 @@
-"""CSV file upload and listing endpoints."""
+"""CSV file upload, listing, and preview endpoints."""
 
 from __future__ import annotations
 
 import csv
 from pathlib import Path
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
 
 from finsaas.web import UPLOAD_DIR
 from finsaas.web.schemas import FileInfo
@@ -34,6 +35,37 @@ def list_files() -> list[FileInfo]:
     for p in sorted(UPLOAD_DIR.glob("*.csv")):
         files.append(FileInfo(name=p.name, size=p.stat().st_size, bars=_count_bars(p)))
     return files
+
+
+@router.get("/data/preview/{filename}")
+def preview_csv(filename: str, rows: int = Query(default=10, ge=1, le=100)) -> Dict[str, Any]:
+    """Return headers + first N rows + total bar count for a CSV file."""
+    path = UPLOAD_DIR / filename
+    if not path.exists() or not path.name.endswith(".csv"):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Prevent path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    try:
+        with open(path, newline="") as f:
+            reader = csv.reader(f)
+            headers = next(reader, [])
+            data_rows: List[List[str]] = []
+            total = 0
+            for row in reader:
+                total += 1
+                if len(data_rows) < rows:
+                    data_rows.append(row)
+        return {
+            "filename": filename,
+            "headers": headers,
+            "rows": data_rows,
+            "total_bars": total,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 def _count_bars(path: Path) -> int:

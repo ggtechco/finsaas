@@ -33,6 +33,12 @@ const API = {
         return res.json();
     },
 
+    async getDataPreview(filename, rows = 10) {
+        const res = await fetch(`${API_BASE}/api/data/preview/${encodeURIComponent(filename)}?rows=${rows}`);
+        if (!res.ok) throw new Error('Preview unavailable');
+        return res.json();
+    },
+
     async runBacktest(payload) {
         const res = await fetch(`${API_BASE}/api/backtest`, {
             method: 'POST',

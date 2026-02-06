@@ -6,26 +6,52 @@
     <title>FinSaaS Dashboard</title>
     <!-- Set your Railway backend URL here for production deploy -->
     <meta name="api-base" content="">
+    <!-- Inline SVG Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233b82f6'/%3E%3Ctext x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Inter,sans-serif' font-weight='800' font-size='20'%3EF%3C/text%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
 <body>
     <!-- Navbar -->
     <nav class="navbar-main">
-        <a class="navbar-brand" href="/">
-            <span class="logo">F</span>
-            FinSaaS
-        </a>
+        <div class="navbar-left">
+            <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+                <i data-lucide="menu" class="icon-sm"></i>
+            </button>
+            <a class="navbar-brand" href="/">
+                <span class="logo">F</span>
+                FinSaaS
+            </a>
+        </div>
         <span class="navbar-subtitle">BACKTEST &amp; OPTIMIZATION ENGINE</span>
     </nav>
 
     <div class="app-layout">
+        <!-- Sidebar Backdrop (mobile) -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
         <!-- ── Left Sidebar ── -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
+            <!-- Step Progress Bar -->
+            <div class="step-progress">
+                <div class="step-bar">
+                    <div class="step-bar-fill" id="stepBarFill"></div>
+                </div>
+                <div class="step-dots">
+                    <div class="step-dot" data-step="1" title="Upload Data"></div>
+                    <div class="step-dot" data-step="2" title="Select Strategy"></div>
+                    <div class="step-dot" data-step="3" title="Set Parameters"></div>
+                    <div class="step-dot" data-step="4" title="Configure"></div>
+                    <div class="step-dot" data-step="5" title="Run"></div>
+                </div>
+            </div>
+
             <!-- 1. Data -->
             <div class="section-label"><span class="num">1</span> Data</div>
             <div class="csv-drop" id="csvDrop">
-                <div class="drop-icon">&#8686;</div>
+                <div class="drop-icon"><i data-lucide="upload-cloud" class="icon-drop"></i></div>
                 Drop CSV here or click to upload
             </div>
             <input type="file" id="csvFile" accept=".csv" style="display:none">
@@ -63,7 +89,10 @@
 
             <!-- 5. Run -->
             <div class="section-label"><span class="num">5</span> Run</div>
-            <button class="btn-backtest" id="btnBacktest">&#9654; Run Backtest</button>
+            <button class="btn-backtest" id="btnBacktest">
+                <i data-lucide="play" class="icon-btn"></i> Run Backtest
+                <span class="kbd-hint">Ctrl+Enter</span>
+            </button>
             <div style="height:0.5rem"></div>
             <div class="opt-row">
                 <select id="optMethod">
@@ -76,7 +105,9 @@
                     <option value="profit_factor">Profit Factor</option>
                 </select>
             </div>
-            <button class="btn-optimize" id="btnOptimize">Optimize</button>
+            <button class="btn-optimize" id="btnOptimize">
+                <i data-lucide="flask-conical" class="icon-btn"></i> Optimize
+            </button>
         </aside>
 
         <!-- ── Main Content ── -->
@@ -87,27 +118,71 @@
                 <button class="error-close" onclick="document.getElementById('errorAlert').classList.remove('visible')">&times;</button>
             </div>
 
+            <!-- Data Preview -->
+            <div class="data-preview" id="dataPreview">
+                <div class="preview-header">
+                    <span class="preview-badge" id="previewBadge"></span>
+                    <button class="preview-close" id="previewClose">&times;</button>
+                </div>
+                <div class="preview-table-wrapper">
+                    <table class="trades-table preview-table" id="previewTable">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- Loading Spinner -->
             <div class="loading-overlay" id="spinner">
                 <div class="loader"></div>
-                <div class="loading-text">Running backtest...</div>
+                <div class="loading-text" id="loadingText">Running backtest...</div>
+                <div class="loading-subtext" id="loadingSubtext"></div>
+                <div class="shimmer-bar"><div class="shimmer-fill"></div></div>
             </div>
 
             <!-- Placeholder -->
             <div class="placeholder-view" id="placeholder">
-                <div class="placeholder-icon">&#128202;</div>
+                <div class="placeholder-icon"><i data-lucide="bar-chart-2" class="icon-placeholder"></i></div>
                 <h3>Welcome to FinSaaS</h3>
                 <p>Upload a CSV file, select a strategy, configure parameters and run a backtest to visualize results.</p>
+                <div class="placeholder-steps">
+                    <div class="ph-step">
+                        <div class="ph-num">1</div>
+                        <div class="ph-label">Upload CSV</div>
+                    </div>
+                    <div class="ph-step">
+                        <div class="ph-num">2</div>
+                        <div class="ph-label">Choose Strategy</div>
+                    </div>
+                    <div class="ph-step">
+                        <div class="ph-num">3</div>
+                        <div class="ph-label">Run Backtest</div>
+                    </div>
+                </div>
             </div>
 
             <!-- Backtest Results -->
             <div class="results-view" id="results">
+                <!-- Export Toolbar -->
+                <div class="export-toolbar" id="exportToolbar">
+                    <button class="export-btn" id="exportCSV"><i data-lucide="file-text" class="icon-btn"></i> Export Trades CSV</button>
+                    <button class="export-btn" id="exportJSON"><i data-lucide="braces" class="icon-btn"></i> Export Metrics JSON</button>
+                    <button class="export-btn" id="exportPNG"><i data-lucide="image" class="icon-btn"></i> Export Equity Chart</button>
+                </div>
+
                 <!-- Metric Cards -->
                 <div class="metrics-grid" id="metricsCards"></div>
+                <div class="metrics-toggle" id="metricsToggle" style="display:none">
+                    <i data-lucide="chevrons-down" class="icon-btn"></i> Show all metrics
+                </div>
+                <div class="metrics-secondary" id="metricsSecondary"></div>
 
                 <!-- Equity Curve -->
                 <div class="chart-card">
-                    <div class="chart-header"><span class="icon">&#128200;</span> Equity Curve</div>
+                    <div class="chart-header">
+                        <i data-lucide="trending-up" class="icon-chart"></i> Equity Curve
+                        <button class="chart-reset-btn" id="resetEquityZoom" title="Reset zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
+                    </div>
                     <div class="chart-body">
                         <div class="chart-container">
                             <canvas id="equityChart"></canvas>
@@ -117,7 +192,10 @@
 
                 <!-- Drawdown -->
                 <div class="chart-card">
-                    <div class="chart-header"><span class="icon">&#128201;</span> Drawdown</div>
+                    <div class="chart-header">
+                        <i data-lucide="trending-down" class="icon-chart"></i> Drawdown
+                        <button class="chart-reset-btn" id="resetDrawdownZoom" title="Reset zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
+                    </div>
                     <div class="chart-body">
                         <div class="chart-container small">
                             <canvas id="drawdownChart"></canvas>
@@ -125,21 +203,35 @@
                     </div>
                 </div>
 
-                <!-- Trade Table -->
+                <!-- P&L Distribution -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <i data-lucide="bar-chart-2" class="icon-chart"></i> P&L Distribution
+                        <button class="chart-reset-btn" id="resetPnlZoom" title="Reset zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
+                    </div>
+                    <div class="chart-body">
+                        <div class="chart-container small">
+                            <canvas id="pnlChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trade Summary -->
                 <div class="trades-card">
-                    <div class="chart-header"><span class="icon">&#128203;</span> Trades</div>
+                    <div class="chart-header"><i data-lucide="list" class="icon-chart"></i> Trades</div>
+                    <div class="trade-summary" id="tradeSummary"></div>
                     <div class="trades-wrapper">
                         <table class="trades-table" id="tradesTable">
                             <thead>
                                 <tr>
-                                    <th>Entry</th>
-                                    <th>Exit</th>
-                                    <th>Side</th>
-                                    <th>Entry $</th>
-                                    <th>Exit $</th>
-                                    <th>P&amp;L</th>
-                                    <th>P&amp;L%</th>
-                                    <th>Bars</th>
+                                    <th data-sort="entry_time">Entry <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="exit_time">Exit <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="side">Side <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="entry_price">Entry $ <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="exit_price">Exit $ <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="pnl">P&amp;L <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="pnl_pct">P&amp;L% <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="bars_held">Bars <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
@@ -151,11 +243,11 @@
             <!-- Optimize Results -->
             <div class="optimize-view" id="optimizeResults">
                 <div class="chart-card">
-                    <div class="chart-header"><span class="icon">&#9881;</span> Optimization Results</div>
+                    <div class="chart-header"><i data-lucide="settings" class="icon-chart"></i> Optimization Results</div>
                     <div class="chart-body" id="optimizeSummary"></div>
                 </div>
                 <div class="trades-card">
-                    <div class="chart-header"><span class="icon">&#128203;</span> Trials (Top 50)</div>
+                    <div class="chart-header"><i data-lucide="list" class="icon-chart"></i> Trials (Top 50)</div>
                     <div class="trades-wrapper">
                         <table class="trades-table" id="optimizeTrials">
                             <thead>
@@ -173,7 +265,12 @@
         </main>
     </div>
 
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script>
         // Set API_BASE from meta tag or default to same-origin.
         // For Vercel deploy, update the content attribute with your Railway URL.
@@ -183,5 +280,6 @@
     <script src="/js/api.js"></script>
     <script src="/js/charts.js"></script>
     <script src="/js/app.js"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

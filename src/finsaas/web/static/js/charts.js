@@ -1,7 +1,118 @@
 /**
  * Chart.js helpers for FinSaaS dashboard.
- * Enhanced: P&L distribution histogram, zoom/pan plugin integration.
+ * Enhanced: P&L distribution histogram, zoom/pan plugin integration,
+ * crosshair plugin, synchronized tooltips, trade markers, annotations.
  */
+
+/* ── Crosshair Plugin ── */
+const crosshairPlugin = {
+    id: 'crosshair',
+    _activeChartId: null,
+    _activeIndex: null,
+
+    afterEvent(chart, args) {
+        const evt = args.event;
+        if (evt.type === 'mousemove' && chart.getActiveElements().length > 0) {
+            crosshairPlugin._activeChartId = chart.id;
+            const el = chart.getActiveElements()[0];
+            crosshairPlugin._activeIndex = el.index;
+            // Sync sibling charts
+            Charts._syncCharts(chart.id, el.index);
+        }
+        if (evt.type === 'mouseout') {
+            crosshairPlugin._activeChartId = null;
+            crosshairPlugin._activeIndex = null;
+            Charts._clearSync(chart.id);
+        }
+    },
+
+    afterDraw(chart) {
+        const idx = crosshairPlugin._activeIndex;
+        if (idx == null) return;
+        // Only draw on timeseries charts (equity & drawdown)
+        if (!Charts._isTimeseriesChart(chart)) return;
+
+        const meta = chart.getDatasetMeta(0);
+        if (!meta || !meta.data || !meta.data[idx]) return;
+
+        const x = meta.data[idx].x;
+        const { top, bottom } = chart.chartArea;
+        const ctx = chart.ctx;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(100, 116, 139, 0.5)';
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, bottom);
+        ctx.stroke();
+        ctx.restore();
+    },
+};
+
+/* ── Annotation Plugin (max DD, best/worst trade) ── */
+const annotationPlugin = {
+    id: 'tradeAnnotations',
+    _annotations: [],
+
+    afterDatasetsDraw(chart) {
+        if (!Charts._isTimeseriesChart(chart) || chart !== Charts.equityChart) return;
+        const annotations = annotationPlugin._annotations;
+        if (!annotations.length) return;
+
+        const meta = chart.getDatasetMeta(0);
+        if (!meta || !meta.data) return;
+        const ctx = chart.ctx;
+
+        annotations.forEach(ann => {
+            const idx = ann.index;
+            if (idx < 0 || idx >= meta.data.length) return;
+            const point = meta.data[idx];
+            const x = point.x;
+            const y = point.y;
+
+            ctx.save();
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+
+            if (ann.type === 'maxdd') {
+                // Red diamond marker
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.moveTo(x, y - 7);
+                ctx.lineTo(x + 5, y);
+                ctx.lineTo(x, y + 7);
+                ctx.lineTo(x - 5, y);
+                ctx.closePath();
+                ctx.fill();
+                // Label
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('Max DD', x, y - 12);
+            } else if (ann.type === 'best') {
+                // Gold star
+                Charts._drawStar(ctx, x, y - 8, 5, 5, 2.5);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fill();
+                ctx.fillText('Best', x, y - 18);
+            } else if (ann.type === 'worst') {
+                // Dark red star
+                Charts._drawStar(ctx, x, y + 8, 5, 5, 2.5);
+                ctx.fillStyle = '#991b1b';
+                ctx.fill();
+                ctx.fillText('Worst', x, y + 22);
+            }
+
+            ctx.restore();
+        });
+    },
+};
+
+// Register plugins globally
+if (typeof Chart !== 'undefined') {
+    Chart.register(crosshairPlugin, annotationPlugin);
+}
+
 const Charts = {
     equityChart: null,
     drawdownChart: null,
@@ -11,10 +122,54 @@ const Charts = {
         if (this.equityChart) { this.equityChart.destroy(); this.equityChart = null; }
         if (this.drawdownChart) { this.drawdownChart.destroy(); this.drawdownChart = null; }
         if (this.pnlChart) { this.pnlChart.destroy(); this.pnlChart = null; }
+        annotationPlugin._annotations = [];
+    },
+
+    _isTimeseriesChart(chart) {
+        return chart === this.equityChart || chart === this.drawdownChart;
+    },
+
+    _syncCharts(sourceId, index) {
+        const charts = [this.equityChart, this.drawdownChart].filter(Boolean);
+        charts.forEach(c => {
+            if (c.id === sourceId) return;
+            const meta = c.getDatasetMeta(0);
+            if (!meta || !meta.data || !meta.data[index]) return;
+            c.tooltip.setActiveElements(
+                [{ datasetIndex: 0, index }],
+                { x: meta.data[index].x, y: meta.data[index].y }
+            );
+            c.setActiveElements([{ datasetIndex: 0, index }]);
+            c.update('none');
+        });
+    },
+
+    _clearSync(sourceId) {
+        const charts = [this.equityChart, this.drawdownChart].filter(Boolean);
+        charts.forEach(c => {
+            if (c.id === sourceId) return;
+            c.tooltip.setActiveElements([], {});
+            c.setActiveElements([]);
+            c.update('none');
+        });
+    },
+
+    _drawStar(ctx, cx, cy, spikes, outerR, innerR) {
+        let rot = (Math.PI / 2) * 3;
+        const step = Math.PI / spikes;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - outerR);
+        for (let i = 0; i < spikes; i++) {
+            ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+            rot += step;
+            ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+            rot += step;
+        }
+        ctx.lineTo(cx, cy - outerR);
+        ctx.closePath();
     },
 
     _zoomPanConfig() {
-        // Only enable if plugin is loaded
         if (typeof ChartZoom === 'undefined' && typeof Chart !== 'undefined' && !Chart.registry.plugins.get('zoom')) {
             return {};
         }
@@ -88,14 +243,12 @@ const Charts = {
         };
 
         if (extra) {
-            // Deep merge plugins and scales
             if (extra.plugins) {
                 Object.assign(base.plugins, extra.plugins);
             }
             if (extra.scales) {
                 Object.assign(base.scales, extra.scales);
             }
-            // Merge other top-level keys
             for (const key of Object.keys(extra)) {
                 if (key !== 'plugins' && key !== 'scales') {
                     base[key] = extra[key];
@@ -106,7 +259,7 @@ const Charts = {
         return base;
     },
 
-    renderEquity(canvasId, equityCurve, initialCapital) {
+    renderEquity(canvasId, equityCurve, initialCapital, trades) {
         const ctx = document.getElementById(canvasId).getContext('2d');
         const labels = equityCurve.map(p => p.timestamp.replace('T', ' ').slice(0, 16));
         const data = equityCurve.map(p => p.equity);
@@ -118,36 +271,143 @@ const Charts = {
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
 
+        // Build trade marker datasets
+        const datasets = [
+            {
+                label: 'Equity',
+                data,
+                borderColor: '#3b82f6',
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#3b82f6',
+                borderWidth: 2.5,
+            },
+            {
+                label: 'Initial Capital',
+                data: Array(data.length).fill(initialCapital),
+                borderColor: '#94a3b8',
+                borderDash: [6, 4],
+                pointRadius: 0,
+                borderWidth: 1,
+                fill: false,
+            },
+        ];
+
+        // Trade markers: entries (green triangle up) and exits (red triangle down)
+        if (trades && trades.length > 0) {
+            const tsMap = {};
+            equityCurve.forEach((p, i) => {
+                const key = p.timestamp.replace('T', ' ').slice(0, 16);
+                tsMap[key] = i;
+            });
+
+            const entryData = new Array(data.length).fill(null);
+            const exitData = new Array(data.length).fill(null);
+
+            trades.forEach(t => {
+                const entryKey = t.entry_time.replace('T', ' ').slice(0, 16);
+                const exitKey = t.exit_time.replace('T', ' ').slice(0, 16);
+                const ei = tsMap[entryKey];
+                const xi = tsMap[exitKey];
+                if (ei != null) entryData[ei] = data[ei];
+                if (xi != null) exitData[xi] = data[xi];
+            });
+
+            datasets.push({
+                label: 'Entry',
+                data: entryData,
+                pointStyle: 'triangle',
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#10b981',
+                pointBorderColor: '#10b981',
+                borderColor: 'transparent',
+                borderWidth: 0,
+                showLine: false,
+                fill: false,
+            });
+
+            datasets.push({
+                label: 'Exit',
+                data: exitData,
+                pointStyle: 'triangle',
+                pointRotation: 180,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#ef4444',
+                pointBorderColor: '#ef4444',
+                borderColor: 'transparent',
+                borderWidth: 0,
+                showLine: false,
+                fill: false,
+            });
+
+            // Build annotations for max DD, best/worst trade
+            this._buildAnnotations(equityCurve, trades, tsMap);
+        }
+
         this.equityChart = new Chart(ctx, {
             type: 'line',
-            data: {
-                labels,
-                datasets: [
-                    {
-                        label: 'Equity',
-                        data,
-                        borderColor: '#3b82f6',
-                        backgroundColor: gradient,
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointHoverRadius: 5,
-                        pointHoverBackgroundColor: '#3b82f6',
-                        borderWidth: 2.5,
+            data: { labels, datasets },
+            options: this._commonOptions({
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label(tooltipItem) {
+                                if (tooltipItem.raw == null) return null;
+                                const dsLabel = tooltipItem.dataset.label;
+                                if (dsLabel === 'Entry') return `Entry: $${tooltipItem.raw.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+                                if (dsLabel === 'Exit') return `Exit: $${tooltipItem.raw.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+                                return `${dsLabel}: $${tooltipItem.raw.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+                            },
+                        },
+                        filter(tooltipItem) {
+                            return tooltipItem.raw != null;
+                        },
                     },
-                    {
-                        label: 'Initial Capital',
-                        data: Array(data.length).fill(initialCapital),
-                        borderColor: '#94a3b8',
-                        borderDash: [6, 4],
-                        pointRadius: 0,
-                        borderWidth: 1,
-                        fill: false,
-                    },
-                ],
-            },
-            options: this._commonOptions(),
+                },
+            }),
         });
+    },
+
+    _buildAnnotations(equityCurve, trades, tsMap) {
+        const annotations = [];
+
+        // Max drawdown point
+        let maxDdIdx = 0;
+        let maxDd = 0;
+        equityCurve.forEach((p, i) => {
+            if (p.drawdown > maxDd) {
+                maxDd = p.drawdown;
+                maxDdIdx = i;
+            }
+        });
+        if (maxDd > 0) {
+            annotations.push({ type: 'maxdd', index: maxDdIdx });
+        }
+
+        // Best and worst trade by pnl
+        if (trades.length > 0) {
+            let bestTrade = trades[0];
+            let worstTrade = trades[0];
+            trades.forEach(t => {
+                if (t.pnl > bestTrade.pnl) bestTrade = t;
+                if (t.pnl < worstTrade.pnl) worstTrade = t;
+            });
+
+            const bestKey = bestTrade.exit_time.replace('T', ' ').slice(0, 16);
+            const worstKey = worstTrade.exit_time.replace('T', ' ').slice(0, 16);
+            const bestIdx = tsMap[bestKey];
+            const worstIdx = tsMap[worstKey];
+
+            if (bestIdx != null) annotations.push({ type: 'best', index: bestIdx });
+            if (worstIdx != null && worstIdx !== bestIdx) annotations.push({ type: 'worst', index: worstIdx });
+        }
+
+        annotationPlugin._annotations = annotations;
     },
 
     renderDrawdown(canvasId, equityCurve) {
@@ -213,7 +473,6 @@ const Charts = {
         const min = Math.min(...pnls);
         const max = Math.max(...pnls);
 
-        // Create histogram bins
         const binCount = Math.min(20, Math.max(5, Math.ceil(Math.sqrt(trades.length))));
         const range = max - min || 1;
         const binWidth = range / binCount;
@@ -222,7 +481,6 @@ const Charts = {
         const labels = [];
         for (let i = 0; i < binCount; i++) {
             const lo = min + i * binWidth;
-            const hi = lo + binWidth;
             bins.push(0);
             labels.push(lo.toFixed(0));
         }
@@ -234,7 +492,6 @@ const Charts = {
             bins[idx]++;
         });
 
-        // Color each bin based on whether it's positive or negative
         const colors = labels.map(l => parseFloat(l) >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)');
         const borderColors = labels.map(l => parseFloat(l) >= 0 ? '#10b981' : '#ef4444');
 

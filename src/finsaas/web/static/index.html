@@ -50,7 +50,7 @@
 
             <!-- 1. Data -->
             <div class="section-label"><span class="num">1</span> Data</div>
-            <div class="csv-drop" id="csvDrop">
+            <div class="csv-drop" id="csvDrop" role="button" tabindex="0" aria-label="Upload CSV file - drop here or click to browse">
                 <div class="drop-icon"><i data-lucide="upload-cloud" class="icon-drop"></i></div>
                 Drop CSV here or click to upload
             </div>
@@ -60,7 +60,7 @@
 
             <!-- 2. Strategy -->
             <div class="section-label"><span class="num">2</span> Strategy</div>
-            <select id="strategySelect">
+            <select id="strategySelect" aria-label="Select trading strategy">
                 <option value="">-- Select strategy --</option>
             </select>
 
@@ -71,41 +71,41 @@
             <!-- 4. Config -->
             <div class="section-label"><span class="num">4</span> Config</div>
             <div style="margin-bottom:0.4rem">
-                <label class="form-label">Symbol</label>
-                <input type="text" class="form-control" id="symbol" value="BTCUSDT">
+                <label class="form-label" for="symbol">Symbol</label>
+                <input type="text" class="form-control" id="symbol" value="BTCUSDT" aria-label="Trading symbol">
             </div>
             <div style="margin-bottom:0.4rem">
-                <label class="form-label">Initial Capital</label>
-                <input type="number" class="form-control" id="capital" value="10000" step="1000">
+                <label class="form-label" for="capital">Initial Capital</label>
+                <input type="number" class="form-control" id="capital" value="10000" step="1000" min="1" aria-label="Initial capital amount">
             </div>
             <div style="margin-bottom:0.4rem">
-                <label class="form-label">Commission (%)</label>
-                <input type="number" class="form-control" id="commission" value="0.001" step="0.0001">
+                <label class="form-label" for="commission">Commission (%)</label>
+                <input type="number" class="form-control" id="commission" value="0.001" step="0.0001" min="0" max="1" aria-label="Commission percentage">
             </div>
             <div style="margin-bottom:0.4rem">
-                <label class="form-label">Slippage (%)</label>
-                <input type="number" class="form-control" id="slippage" value="0.0005" step="0.0001">
+                <label class="form-label" for="slippage">Slippage (%)</label>
+                <input type="number" class="form-control" id="slippage" value="0.0005" step="0.0001" min="0" max="1" aria-label="Slippage percentage">
             </div>
 
             <!-- 5. Run -->
             <div class="section-label"><span class="num">5</span> Run</div>
-            <button class="btn-backtest" id="btnBacktest">
+            <button class="btn-backtest" id="btnBacktest" aria-label="Run backtest">
                 <i data-lucide="play" class="icon-btn"></i> Run Backtest
                 <span class="kbd-hint">Ctrl+Enter</span>
             </button>
             <div style="height:0.5rem"></div>
             <div class="opt-row">
-                <select id="optMethod">
+                <select id="optMethod" aria-label="Optimization method">
                     <option value="grid">Grid Search</option>
                     <option value="genetic">Genetic</option>
                 </select>
-                <select id="optObjective">
+                <select id="optObjective" aria-label="Optimization objective">
                     <option value="sharpe">Sharpe</option>
                     <option value="total_return">Return</option>
                     <option value="profit_factor">Profit Factor</option>
                 </select>
             </div>
-            <button class="btn-optimize" id="btnOptimize">
+            <button class="btn-optimize" id="btnOptimize" aria-label="Run optimization">
                 <i data-lucide="flask-conical" class="icon-btn"></i> Optimize
             </button>
         </aside>
@@ -113,16 +113,16 @@
         <!-- ── Main Content ── -->
         <main class="main-content">
             <!-- Error Alert -->
-            <div class="error-alert" id="errorAlert">
+            <div class="error-alert" id="errorAlert" role="alert">
                 <span id="errorMsg"></span>
-                <button class="error-close" onclick="document.getElementById('errorAlert').classList.remove('visible')">&times;</button>
+                <button class="error-close" onclick="document.getElementById('errorAlert').classList.remove('visible')" aria-label="Close error">&times;</button>
             </div>
 
             <!-- Data Preview -->
             <div class="data-preview" id="dataPreview">
                 <div class="preview-header">
                     <span class="preview-badge" id="previewBadge"></span>
-                    <button class="preview-close" id="previewClose">&times;</button>
+                    <button class="preview-close" id="previewClose" aria-label="Close data preview">&times;</button>
                 </div>
                 <div class="preview-table-wrapper">
                     <table class="trades-table preview-table" id="previewTable">
@@ -161,18 +161,43 @@
                 </div>
             </div>
 
+            <!-- Run History Panel -->
+            <div class="history-panel" id="historyPanel" style="display:none">
+                <div class="history-header" id="historyToggleHeader">
+                    <span><i data-lucide="clock" class="icon-btn"></i> Run History</span>
+                    <span class="history-chevron" id="historyChevron"><i data-lucide="chevron-down" class="icon-btn"></i></span>
+                </div>
+                <div class="history-body" id="historyBody">
+                    <div class="history-items" id="historyItems"></div>
+                    <button class="compare-btn" id="btnCompare" disabled aria-label="Compare selected runs">
+                        <i data-lucide="git-compare" class="icon-btn"></i> Compare Selected
+                    </button>
+                </div>
+            </div>
+
+            <!-- Compare Overlay -->
+            <div class="compare-overlay" id="compareOverlay">
+                <div class="compare-modal">
+                    <div class="compare-modal-header">
+                        <span>Run Comparison</span>
+                        <button class="compare-modal-close" id="compareClose" aria-label="Close comparison">&times;</button>
+                    </div>
+                    <div class="compare-modal-body" id="compareBody"></div>
+                </div>
+            </div>
+
             <!-- Backtest Results -->
             <div class="results-view" id="results">
                 <!-- Export Toolbar -->
                 <div class="export-toolbar" id="exportToolbar">
-                    <button class="export-btn" id="exportCSV"><i data-lucide="file-text" class="icon-btn"></i> Export Trades CSV</button>
-                    <button class="export-btn" id="exportJSON"><i data-lucide="braces" class="icon-btn"></i> Export Metrics JSON</button>
-                    <button class="export-btn" id="exportPNG"><i data-lucide="image" class="icon-btn"></i> Export Equity Chart</button>
+                    <button class="export-btn" id="exportCSV" aria-label="Export trades as CSV"><i data-lucide="file-text" class="icon-btn"></i> Export Trades CSV</button>
+                    <button class="export-btn" id="exportJSON" aria-label="Export metrics as JSON"><i data-lucide="braces" class="icon-btn"></i> Export Metrics JSON</button>
+                    <button class="export-btn" id="exportPNG" aria-label="Export equity chart as PNG"><i data-lucide="image" class="icon-btn"></i> Export Equity Chart</button>
                 </div>
 
                 <!-- Metric Cards -->
                 <div class="metrics-grid" id="metricsCards"></div>
-                <div class="metrics-toggle" id="metricsToggle" style="display:none">
+                <div class="metrics-toggle" id="metricsToggle" style="display:none" role="button" tabindex="0" aria-label="Toggle additional metrics">
                     <i data-lucide="chevrons-down" class="icon-btn"></i> Show all metrics
                 </div>
                 <div class="metrics-secondary" id="metricsSecondary"></div>
@@ -181,10 +206,10 @@
                 <div class="chart-card">
                     <div class="chart-header">
                         <i data-lucide="trending-up" class="icon-chart"></i> Equity Curve
-                        <button class="chart-reset-btn" id="resetEquityZoom" title="Reset zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
+                        <button class="chart-reset-btn" id="resetEquityZoom" title="Reset zoom" aria-label="Reset equity chart zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
                     </div>
                     <div class="chart-body">
-                        <div class="chart-container">
+                        <div class="chart-container" role="img" aria-label="Equity curve chart showing portfolio value over time">
                             <canvas id="equityChart"></canvas>
                         </div>
                     </div>
@@ -194,10 +219,10 @@
                 <div class="chart-card">
                     <div class="chart-header">
                         <i data-lucide="trending-down" class="icon-chart"></i> Drawdown
-                        <button class="chart-reset-btn" id="resetDrawdownZoom" title="Reset zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
+                        <button class="chart-reset-btn" id="resetDrawdownZoom" title="Reset zoom" aria-label="Reset drawdown chart zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
                     </div>
                     <div class="chart-body">
-                        <div class="chart-container small">
+                        <div class="chart-container small" role="img" aria-label="Drawdown chart showing portfolio drawdown percentage">
                             <canvas id="drawdownChart"></canvas>
                         </div>
                     </div>
@@ -207,10 +232,10 @@
                 <div class="chart-card">
                     <div class="chart-header">
                         <i data-lucide="bar-chart-2" class="icon-chart"></i> P&L Distribution
-                        <button class="chart-reset-btn" id="resetPnlZoom" title="Reset zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
+                        <button class="chart-reset-btn" id="resetPnlZoom" title="Reset zoom" aria-label="Reset P&L chart zoom"><i data-lucide="maximize-2" class="icon-btn"></i></button>
                     </div>
                     <div class="chart-body">
-                        <div class="chart-container small">
+                        <div class="chart-container small" role="img" aria-label="P&L distribution histogram showing trade profit and loss distribution">
                             <canvas id="pnlChart"></canvas>
                         </div>
                     </div>
@@ -220,22 +245,42 @@
                 <div class="trades-card">
                     <div class="chart-header"><i data-lucide="list" class="icon-chart"></i> Trades</div>
                     <div class="trade-summary" id="tradeSummary"></div>
+                    <!-- Filter Toolbar -->
+                    <div class="trade-filters" id="tradeFilters" style="display:none">
+                        <div class="filter-group">
+                            <button class="filter-btn active" data-filter-pnl="all" aria-label="Show all trades">All</button>
+                            <button class="filter-btn" data-filter-pnl="winning" aria-label="Show winning trades only">Winning</button>
+                            <button class="filter-btn" data-filter-pnl="losing" aria-label="Show losing trades only">Losing</button>
+                        </div>
+                        <div class="filter-group">
+                            <button class="filter-btn active" data-filter-side="all" aria-label="Show all sides">All</button>
+                            <button class="filter-btn" data-filter-side="long" aria-label="Show long trades only">Long</button>
+                            <button class="filter-btn" data-filter-side="short" aria-label="Show short trades only">Short</button>
+                        </div>
+                        <input type="text" class="filter-search-input" id="tradeSearchInput" placeholder="Search by timestamp..." aria-label="Search trades by timestamp">
+                    </div>
                     <div class="trades-wrapper">
-                        <table class="trades-table" id="tradesTable">
+                        <table class="trades-table" id="tradesTable" role="table">
                             <thead>
-                                <tr>
-                                    <th data-sort="entry_time">Entry <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
-                                    <th data-sort="exit_time">Exit <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
-                                    <th data-sort="side">Side <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
-                                    <th data-sort="entry_price">Entry $ <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
-                                    <th data-sort="exit_price">Exit $ <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
-                                    <th data-sort="pnl">P&amp;L <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
-                                    <th data-sort="pnl_pct">P&amp;L% <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
-                                    <th data-sort="bars_held">Bars <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                <tr role="row">
+                                    <th data-sort="entry_time" role="columnheader" tabindex="0" aria-label="Sort by entry time">Entry <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="exit_time" role="columnheader" tabindex="0" aria-label="Sort by exit time">Exit <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="side" role="columnheader" tabindex="0" aria-label="Sort by side">Side <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="entry_price" role="columnheader" tabindex="0" aria-label="Sort by entry price">Entry $ <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="exit_price" role="columnheader" tabindex="0" aria-label="Sort by exit price">Exit $ <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="pnl" role="columnheader" tabindex="0" aria-label="Sort by profit and loss">P&amp;L <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="pnl_pct" role="columnheader" tabindex="0" aria-label="Sort by profit and loss percentage">P&amp;L% <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
+                                    <th data-sort="bars_held" role="columnheader" tabindex="0" aria-label="Sort by bars held">Bars <i data-lucide="arrow-up-down" class="icon-sort"></i></th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                    <!-- Pagination -->
+                    <div class="trade-pagination" id="tradePagination" style="display:none">
+                        <button class="pagination-btn" id="paginationPrev" aria-label="Previous page">Prev</button>
+                        <span class="pagination-info" id="paginationInfo"></span>
+                        <button class="pagination-btn" id="paginationNext" aria-label="Next page">Next</button>
                     </div>
                 </div>
             </div>
@@ -262,11 +307,14 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Screen reader live region -->
+            <div id="srAnnounce" class="sr-only" role="status" aria-live="polite"></div>
         </main>
     </div>
 
     <!-- Toast Container -->
-    <div id="toastContainer" class="toast-container"></div>
+    <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>

@@ -2,7 +2,8 @@
  * FinSaaS Dashboard - main application logic.
  * All original features preserved: CSV upload, strategy select, params, backtest, optimize.
  * Enhanced: toast, step progress, loading animation, metric icons, sortable trades,
- * trade summary, expandable metrics, data preview, export, keyboard shortcuts, mobile sidebar.
+ * trade summary, expandable metrics, data preview, export, keyboard shortcuts, mobile sidebar,
+ * trade filtering/pagination, run history/compare, button states, count-up, skeleton, a11y.
  */
 document.addEventListener('DOMContentLoaded', () => {
     const els = {
@@ -50,17 +51,42 @@ document.addEventListener('DOMContentLoaded', () => {
         resetEquityZoom: document.getElementById('resetEquityZoom'),
         resetDrawdownZoom: document.getElementById('resetDrawdownZoom'),
         resetPnlZoom: document.getElementById('resetPnlZoom'),
+        tradeFilters: document.getElementById('tradeFilters'),
+        tradeSearchInput: document.getElementById('tradeSearchInput'),
+        tradePagination: document.getElementById('tradePagination'),
+        paginationPrev: document.getElementById('paginationPrev'),
+        paginationNext: document.getElementById('paginationNext'),
+        paginationInfo: document.getElementById('paginationInfo'),
+        historyPanel: document.getElementById('historyPanel'),
+        historyToggleHeader: document.getElementById('historyToggleHeader'),
+        historyBody: document.getElementById('historyBody'),
+        historyItems: document.getElementById('historyItems'),
+        historyChevron: document.getElementById('historyChevron'),
+        btnCompare: document.getElementById('btnCompare'),
+        compareOverlay: document.getElementById('compareOverlay'),
+        compareClose: document.getElementById('compareClose'),
+        compareBody: document.getElementById('compareBody'),
+        srAnnounce: document.getElementById('srAnnounce'),
     };
 
     let currentFile = null;
     let currentParams = [];
     let lastBacktestData = null;
+    let lastBacktestPayload = null;
     let lastInitialCapital = 10000;
 
     // Trade sort state
     let tradesData = [];
     let sortCol = null;
     let sortAsc = true;
+
+    // Trade filter/pagination state
+    const PAGE_SIZE = 20;
+    let filterPnl = 'all';
+    let filterSide = 'all';
+    let searchQuery = '';
+    let currentPage = 0;
+    let searchDebounceTimer = null;
 
     // Step progress state
     const steps = { data: false, strategy: false, params: false, config: true, run: false };
@@ -95,6 +121,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Init ---
     loadStrategies();
     loadFiles();
+    updateButtonStates();
+    renderRunHistory();
 
     // --- Toast System ---
     function showToast(msg, type = 'info') {
@@ -108,23 +136,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 
+    // --- Screen Reader Announce ---
+    function srAnnounce(msg) {
+        els.srAnnounce.textContent = msg;
+        setTimeout(() => { els.srAnnounce.textContent = ''; }, 3000);
+    }
+
     // --- Step Progress ---
     function updateStepProgress() {
         const stepKeys = ['data', 'strategy', 'params', 'config', 'run'];
         const dots = document.querySelectorAll('.step-dot');
         let completedCount = 0;
-        let lastCompleted = -1;
 
         stepKeys.forEach((key, i) => {
             dots[i].classList.remove('completed', 'active');
             if (steps[key]) {
                 dots[i].classList.add('completed');
                 completedCount++;
-                lastCompleted = i;
             }
         });
 
-        // Mark next uncompleted as active
         const nextStep = stepKeys.findIndex(k => !steps[k]);
         if (nextStep >= 0 && dots[nextStep]) {
             dots[nextStep].classList.add('active');
@@ -133,6 +164,55 @@ document.addEventListener('DOMContentLoaded', () => {
         const pct = (completedCount / stepKeys.length) * 100;
         els.stepBarFill.style.width = pct + '%';
     }
+
+    // --- Button States ---
+    function updateButtonStates() {
+        const fileReady = !!currentFile;
+        const stratReady = !!els.strategySelect.value;
+        els.btnBacktest.disabled = !fileReady || !stratReady;
+        els.btnOptimize.disabled = !fileReady || !stratReady;
+    }
+
+    // --- Field Validation ---
+    function validateFields() {
+        let valid = true;
+        // Clear previous errors
+        document.querySelectorAll('.field-error').forEach(e => e.remove());
+        document.querySelectorAll('.form-control.is-invalid').forEach(e => e.classList.remove('is-invalid'));
+
+        const capital = parseFloat(els.capital.value);
+        if (!capital || capital <= 0) {
+            markInvalid(els.capital, 'Capital must be greater than 0');
+            valid = false;
+        }
+
+        const commission = parseFloat(els.commission.value);
+        if (commission < 0 || commission >= 1) {
+            markInvalid(els.commission, 'Commission must be between 0 and 1');
+            valid = false;
+        }
+
+        const slippage = parseFloat(els.slippage.value);
+        if (slippage < 0 || slippage >= 1) {
+            markInvalid(els.slippage, 'Slippage must be between 0 and 1');
+            valid = false;
+        }
+
+        return valid;
+    }
+
+    function markInvalid(input, msg) {
+        input.classList.add('is-invalid');
+        const span = document.createElement('span');
+        span.className = 'field-error';
+        span.textContent = msg;
+        input.parentNode.appendChild(span);
+    }
+
+    // Listen for changes to update button states
+    els.strategySelect.addEventListener('change', () => {
+        updateButtonStates();
+    });
 
     // --- Loading Animation ---
     function startLoadingAnimation(type) {
@@ -159,8 +239,76 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- Skeleton Loading ---
+    function showSkeleton() {
+        const skeletonHTML = Array(8).fill('').map(() => `
+            <div class="metric-card skeleton gray">
+                <div class="skeleton-label"></div>
+                <div class="skeleton-value"></div>
+            </div>
+        `).join('');
+        els.metricsCards.innerHTML = skeletonHTML;
+    }
+
+    // --- Count-Up Animation ---
+    function animateCountUp(element, targetText) {
+        // Parse numeric part from text like "$10,000.00", "45.23%", "1.5432"
+        const match = targetText.match(/([^0-9\-]*)([\-]?[\d,]+\.?\d*)(.*)/);
+        if (!match) {
+            element.textContent = targetText;
+            return;
+        }
+
+        const prefix = match[1];
+        const numStr = match[2].replace(/,/g, '');
+        const suffix = match[3];
+        const target = parseFloat(numStr);
+
+        if (isNaN(target)) {
+            element.textContent = targetText;
+            return;
+        }
+
+        const decimals = numStr.includes('.') ? numStr.split('.')[1].length : 0;
+        const duration = 800;
+        const startTime = performance.now();
+
+        function update(now) {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Ease-out cubic
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const current = target * eased;
+
+            let formatted = current.toFixed(decimals);
+            // Reapply commas if original had them
+            if (match[2].includes(',')) {
+                formatted = parseFloat(formatted).toLocaleString(undefined, {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals,
+                });
+            }
+
+            element.textContent = prefix + formatted + suffix;
+
+            if (progress < 1) {
+                requestAnimationFrame(update);
+            } else {
+                element.textContent = targetText;
+            }
+        }
+
+        requestAnimationFrame(update);
+    }
+
     // --- CSV Upload ---
     els.csvDrop.addEventListener('click', () => els.csvFile.click());
+    els.csvDrop.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            els.csvFile.click();
+        }
+    });
 
     els.csvDrop.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -187,6 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
             els.fileInfo.classList.add('visible');
             steps.data = true;
             updateStepProgress();
+            updateButtonStates();
             showToast(`Uploaded ${info.name} (${info.bars} bars)`, 'success');
             loadFiles();
             showDataPreview(info.name);
@@ -216,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.classList.add('active');
                     steps.data = true;
                     updateStepProgress();
+                    updateButtonStates();
                     showDataPreview(f.name);
                 });
                 els.fileList.appendChild(btn);
@@ -226,6 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.classList.add('active');
                     steps.data = true;
                     updateStepProgress();
+                    updateButtonStates();
                 }
             });
         } catch (_) { /* ignore */ }
@@ -268,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     els.strategySelect.addEventListener('change', async () => {
         const name = els.strategySelect.value;
-        if (!name) { els.paramsContainer.innerHTML = ''; currentParams = []; steps.strategy = false; updateStepProgress(); return; }
+        if (!name) { els.paramsContainer.innerHTML = ''; currentParams = []; steps.strategy = false; updateStepProgress(); updateButtonStates(); return; }
         try {
             const info = await API.getStrategyParams(name);
             currentParams = info.params;
@@ -276,6 +427,7 @@ document.addEventListener('DOMContentLoaded', () => {
             steps.strategy = true;
             steps.params = true;
             updateStepProgress();
+            updateButtonStates();
         } catch (err) {
             showError(err.message);
         }
@@ -329,6 +481,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (p.max_val != null) input.max = p.max_val;
                 input.dataset.param = p.name;
                 input.dataset.ptype = p.type;
+
+                // Range bar for numeric params
+                if (p.min_val != null && p.max_val != null) {
+                    const rangeBar = document.createElement('div');
+                    rangeBar.className = 'param-range-bar';
+                    const rangeFill = document.createElement('div');
+                    rangeFill.className = 'param-range-fill';
+                    const pct = ((p.default - p.min_val) / (p.max_val - p.min_val)) * 100;
+                    rangeFill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+                    rangeBar.appendChild(rangeFill);
+
+                    input.addEventListener('input', () => {
+                        const val = parseFloat(input.value) || 0;
+                        const fill = ((val - p.min_val) / (p.max_val - p.min_val)) * 100;
+                        rangeFill.style.width = Math.max(0, Math.min(100, fill)) + '%';
+                    });
+
+                    div.appendChild(input);
+                    div.appendChild(rangeBar);
+                    els.paramsContainer.appendChild(div);
+                    return;
+                }
             }
 
             div.appendChild(input);
@@ -354,6 +528,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return params;
     }
 
+    // --- Button Spinner Helpers ---
+    function setButtonLoading(btn, text) {
+        btn._origHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<span class="btn-spinner"></span> ${text}`;
+    }
+
+    function restoreButton(btn) {
+        btn.disabled = false;
+        if (btn._origHTML) {
+            btn.innerHTML = btn._origHTML;
+            delete btn._origHTML;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+
     // --- Backtest ---
     els.btnBacktest.addEventListener('click', runBacktest);
 
@@ -361,6 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentFile) { showError('Please upload or select a CSV file first'); return; }
         const strategy = els.strategySelect.value;
         if (!strategy) { showError('Please select a strategy'); return; }
+        if (!validateFields()) return;
 
         const payload = {
             strategy,
@@ -377,23 +568,32 @@ document.addEventListener('DOMContentLoaded', () => {
         els.spinner.classList.add('visible');
         els.results.classList.remove('visible');
         els.optimizeResults.classList.remove('visible');
+        showSkeleton();
+        els.results.classList.add('visible');
         startLoadingAnimation('backtest');
+        setButtonLoading(els.btnBacktest, 'Running...');
         closeSidebarOnMobile();
 
         try {
             const data = await API.runBacktest(payload);
             lastBacktestData = data;
+            lastBacktestPayload = payload;
             lastInitialCapital = payload.initial_capital;
             renderResults(data, payload.initial_capital);
+            saveRunToHistory(data, payload);
             steps.run = true;
             updateStepProgress();
             showToast(`Backtest complete — ${data.total_trades} trades`, 'success');
+            srAnnounce(`Backtest complete. ${data.total_trades} trades executed. Total return: ${(data.metrics.total_return_pct || 0).toFixed(2)} percent.`);
         } catch (err) {
             showError(err.message);
             showToast('Backtest failed', 'error');
+            els.results.classList.remove('visible');
         } finally {
             stopLoadingAnimation();
             els.spinner.classList.remove('visible');
+            restoreButton(els.btnBacktest);
+            updateButtonStates();
         }
     }
 
@@ -419,9 +619,14 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="metric-card ${met.accent}">
                 <div class="metric-icon"><i data-lucide="${metricIcons[met.label] || 'activity'}"></i></div>
                 <div class="metric-label">${met.label}</div>
-                <div class="metric-value ${met.cls}">${met.value}</div>
+                <div class="metric-value ${met.cls}" data-target="${met.value}"></div>
             </div>
         `).join('');
+
+        // Trigger count-up animation for primary metrics
+        els.metricsCards.querySelectorAll('.metric-value[data-target]').forEach(el => {
+            animateCountUp(el, el.dataset.target);
+        });
 
         // Secondary Metrics (expandable)
         const secondaryMetrics = [
@@ -444,7 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="metric-card ${met.accent}">
                     <div class="metric-icon"><i data-lucide="${metricIcons[met.label] || 'activity'}"></i></div>
                     <div class="metric-label">${met.label}</div>
-                    <div class="metric-value ${met.cls}">${met.value}</div>
+                    <div class="metric-value ${met.cls}" data-target="${met.value}"></div>
                 </div>
             `).join('');
             els.metricsToggle.style.display = 'block';
@@ -452,9 +657,9 @@ document.addEventListener('DOMContentLoaded', () => {
             els.metricsToggle.style.display = 'none';
         }
 
-        // Charts
+        // Charts - pass trades for markers
         if (data.equity_curve.length) {
-            Charts.renderEquity('equityChart', data.equity_curve, initialCapital);
+            Charts.renderEquity('equityChart', data.equity_curve, initialCapital, data.trades);
             Charts.renderDrawdown('drawdownChart', data.equity_curve);
         }
 
@@ -463,11 +668,23 @@ document.addEventListener('DOMContentLoaded', () => {
             Charts.renderPnlDistribution('pnlChart', data.trades);
         }
 
-        // Store trades for sorting
+        // Store trades for sorting/filtering
         tradesData = data.trades.slice();
         sortCol = null;
         sortAsc = true;
-        renderTradesTable(tradesData);
+        filterPnl = 'all';
+        filterSide = 'all';
+        searchQuery = '';
+        currentPage = 0;
+
+        // Show filters if trades exist
+        els.tradeFilters.style.display = tradesData.length ? 'flex' : 'none';
+        // Reset filter button active states
+        els.tradeFilters.querySelectorAll('[data-filter-pnl]').forEach(b => b.classList.toggle('active', b.dataset.filterPnl === 'all'));
+        els.tradeFilters.querySelectorAll('[data-filter-side]').forEach(b => b.classList.toggle('active', b.dataset.filterSide === 'all'));
+        els.tradeSearchInput.value = '';
+
+        renderFilteredTrades();
         renderTradeSummary(data.trades);
 
         // Re-render Lucide icons
@@ -484,8 +701,126 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             sec.classList.add('visible');
             els.metricsToggle.innerHTML = '<i data-lucide="chevrons-up" class="icon-btn"></i> Show fewer metrics';
+            // Animate secondary metric count-ups
+            sec.querySelectorAll('.metric-value[data-target]').forEach(el => {
+                animateCountUp(el, el.dataset.target);
+            });
         }
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+
+    // --- Trade Filtering & Pagination ---
+    function getFilteredTrades() {
+        let filtered = tradesData.slice();
+
+        // Apply sort
+        if (sortCol) {
+            filtered.sort((a, b) => {
+                let va = a[sortCol], vb = b[sortCol];
+                if (typeof va === 'string') {
+                    return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+                }
+                return sortAsc ? va - vb : vb - va;
+            });
+        }
+
+        // Apply PnL filter
+        if (filterPnl === 'winning') {
+            filtered = filtered.filter(t => t.pnl >= 0);
+        } else if (filterPnl === 'losing') {
+            filtered = filtered.filter(t => t.pnl < 0);
+        }
+
+        // Apply side filter
+        if (filterSide === 'long') {
+            filtered = filtered.filter(t => t.side === 'long');
+        } else if (filterSide === 'short') {
+            filtered = filtered.filter(t => t.side === 'short');
+        }
+
+        // Apply search
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            filtered = filtered.filter(t =>
+                t.entry_time.toLowerCase().includes(q) ||
+                t.exit_time.toLowerCase().includes(q)
+            );
+        }
+
+        return filtered;
+    }
+
+    function renderFilteredTrades() {
+        const filtered = getFilteredTrades();
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        if (currentPage >= totalPages) currentPage = totalPages - 1;
+        if (currentPage < 0) currentPage = 0;
+
+        const start = currentPage * PAGE_SIZE;
+        const pageData = filtered.slice(start, start + PAGE_SIZE);
+
+        renderTradesTable(pageData);
+
+        // Pagination
+        if (filtered.length > PAGE_SIZE) {
+            els.tradePagination.style.display = 'flex';
+            els.paginationPrev.disabled = currentPage === 0;
+            els.paginationNext.disabled = currentPage >= totalPages - 1;
+            const showStart = start + 1;
+            const showEnd = Math.min(start + PAGE_SIZE, filtered.length);
+            els.paginationInfo.textContent = `Showing ${showStart}-${showEnd} of ${filtered.length}`;
+        } else {
+            els.tradePagination.style.display = filtered.length ? 'flex' : 'none';
+            els.paginationPrev.disabled = true;
+            els.paginationNext.disabled = true;
+            if (filtered.length) {
+                els.paginationInfo.textContent = `Showing 1-${filtered.length} of ${filtered.length}`;
+            }
+        }
+    }
+
+    // Filter button click handlers
+    els.tradeFilters.addEventListener('click', (e) => {
+        const btn = e.target.closest('.filter-btn');
+        if (!btn) return;
+
+        if (btn.dataset.filterPnl) {
+            filterPnl = btn.dataset.filterPnl;
+            els.tradeFilters.querySelectorAll('[data-filter-pnl]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        if (btn.dataset.filterSide) {
+            filterSide = btn.dataset.filterSide;
+            els.tradeFilters.querySelectorAll('[data-filter-side]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        currentPage = 0;
+        renderFilteredTrades();
+    });
+
+    // Search input with debounce
+    els.tradeSearchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            searchQuery = els.tradeSearchInput.value.trim();
+            currentPage = 0;
+            renderFilteredTrades();
+        }, 300);
+    });
+
+    // Pagination
+    els.paginationPrev.addEventListener('click', () => {
+        if (currentPage > 0) {
+            currentPage--;
+            renderFilteredTrades();
+        }
+    });
+
+    els.paginationNext.addEventListener('click', () => {
+        currentPage++;
+        renderFilteredTrades();
     });
 
     // --- Sortable Trades Table ---
@@ -500,6 +835,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         trades.forEach(t => {
             const row = document.createElement('tr');
+            row.setAttribute('tabindex', '0');
+            row.setAttribute('role', 'row');
             row.innerHTML = `
                 <td data-label="Entry">${t.entry_time.replace('T', ' ').slice(0, 19)}</td>
                 <td data-label="Exit">${t.exit_time.replace('T', ' ').slice(0, 19)}</td>
@@ -510,8 +847,77 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td data-label="P&L%" class="${t.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct.toFixed(2)}%</td>
                 <td data-label="Bars">${t.bars_held}</td>
             `;
+
+            // Expand/collapse detail row on click
+            row.addEventListener('click', () => toggleTradeDetail(row, t));
+            row.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleTradeDetail(row, t);
+                }
+                // Arrow key navigation
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    let next = row.nextElementSibling;
+                    while (next && next.classList.contains('trade-detail-row')) next = next.nextElementSibling;
+                    if (next) next.focus();
+                }
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    let prev = row.previousElementSibling;
+                    while (prev && prev.classList.contains('trade-detail-row')) prev = prev.previousElementSibling;
+                    if (prev) prev.focus();
+                }
+            });
+
             tbody.appendChild(row);
         });
+    }
+
+    function toggleTradeDetail(row, trade) {
+        const existing = row.nextElementSibling;
+        if (existing && existing.classList.contains('trade-detail-row')) {
+            existing.remove();
+            row.classList.remove('expanded');
+            return;
+        }
+
+        // Remove any other expanded rows
+        els.tradesTable.querySelectorAll('.trade-detail-row').forEach(r => r.remove());
+        els.tradesTable.querySelectorAll('tr.expanded').forEach(r => r.classList.remove('expanded'));
+
+        row.classList.add('expanded');
+        const detailRow = document.createElement('tr');
+        detailRow.className = 'trade-detail-row';
+
+        const qty = trade.quantity != null ? trade.quantity : '-';
+        const comm = trade.commission != null ? `$${trade.commission.toFixed(4)}` : '-';
+        const duration = trade.bars_held;
+        const ret = `${trade.pnl_pct >= 0 ? '+' : ''}${trade.pnl_pct.toFixed(2)}%`;
+
+        detailRow.innerHTML = `
+            <td colspan="8">
+                <div class="trade-detail">
+                    <div class="trade-detail-item">
+                        <span class="detail-label">Quantity</span>
+                        <span class="detail-value">${qty}</span>
+                    </div>
+                    <div class="trade-detail-item">
+                        <span class="detail-label">Commission</span>
+                        <span class="detail-value">${comm}</span>
+                    </div>
+                    <div class="trade-detail-item">
+                        <span class="detail-label">Duration (bars)</span>
+                        <span class="detail-value">${duration}</span>
+                    </div>
+                    <div class="trade-detail-item">
+                        <span class="detail-label">Return</span>
+                        <span class="detail-value ${trade.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative'}">${ret}</span>
+                    </div>
+                </div>
+            </td>
+        `;
+        row.after(detailRow);
     }
 
     // Trade table header sort
@@ -531,15 +937,8 @@ document.addEventListener('DOMContentLoaded', () => {
         els.tradesTable.querySelectorAll('th').forEach(h => h.classList.remove('sort-active'));
         th.classList.add('sort-active');
 
-        const sorted = [...tradesData].sort((a, b) => {
-            let va = a[col], vb = b[col];
-            if (typeof va === 'string') {
-                return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
-            }
-            return sortAsc ? va - vb : vb - va;
-        });
-
-        renderTradesTable(sorted);
+        currentPage = 0;
+        renderFilteredTrades();
     });
 
     // --- Trade Summary ---
@@ -566,11 +965,197 @@ document.addEventListener('DOMContentLoaded', () => {
         els.tradeSummary.classList.add('visible');
     }
 
+    // --- Run History ---
+    const HISTORY_KEY = 'finsaas_run_history';
+    const MAX_HISTORY = 5;
+
+    function getRunHistory() {
+        try {
+            return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function saveRunToHistory(data, payload) {
+        const history = getRunHistory();
+        const entry = {
+            id: Date.now(),
+            strategy: payload.strategy,
+            date: new Date().toISOString(),
+            returnPct: (data.metrics.total_return_pct || 0).toFixed(2),
+            trades: data.total_trades || 0,
+            data,
+            payload,
+        };
+        history.unshift(entry);
+        if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        renderRunHistory();
+    }
+
+    function renderRunHistory() {
+        const history = getRunHistory();
+        if (!history.length) {
+            els.historyPanel.style.display = 'none';
+            return;
+        }
+
+        els.historyPanel.style.display = 'block';
+        els.historyItems.innerHTML = '';
+
+        history.forEach((h, i) => {
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.dataset.idx = i;
+
+            const dateStr = new Date(h.date).toLocaleString(undefined, {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+            });
+
+            item.innerHTML = `
+                <input type="checkbox" class="history-check" data-idx="${i}" aria-label="Select run ${i + 1} for comparison">
+                <div class="history-item-info">
+                    <span class="history-item-name">${h.strategy}</span>
+                    <span class="history-item-meta">${dateStr} | ${h.returnPct}% | ${h.trades} trades</span>
+                </div>
+                <button class="history-load-btn" data-idx="${i}" aria-label="Load run ${i + 1}">Load</button>
+            `;
+            els.historyItems.appendChild(item);
+        });
+
+        // Update compare button state
+        updateCompareBtn();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    // History panel toggle
+    els.historyToggleHeader.addEventListener('click', () => {
+        els.historyPanel.classList.toggle('collapsed');
+    });
+
+    // History item clicks
+    els.historyItems.addEventListener('click', (e) => {
+        const loadBtn = e.target.closest('.history-load-btn');
+        if (loadBtn) {
+            const idx = parseInt(loadBtn.dataset.idx);
+            const history = getRunHistory();
+            if (history[idx]) {
+                lastBacktestData = history[idx].data;
+                lastInitialCapital = history[idx].payload.initial_capital;
+                renderResults(history[idx].data, history[idx].payload.initial_capital);
+                showToast('Loaded previous run', 'info');
+            }
+            return;
+        }
+
+        const checkbox = e.target.closest('.history-check');
+        if (checkbox) {
+            // Enforce max 2 selections
+            const checked = els.historyItems.querySelectorAll('.history-check:checked');
+            if (checked.length > 2) {
+                checkbox.checked = false;
+            }
+            updateCompareBtn();
+            // Highlight selected
+            els.historyItems.querySelectorAll('.history-item').forEach(item => {
+                const cb = item.querySelector('.history-check');
+                item.classList.toggle('selected', cb && cb.checked);
+            });
+        }
+    });
+
+    function updateCompareBtn() {
+        const checked = els.historyItems.querySelectorAll('.history-check:checked');
+        els.btnCompare.disabled = checked.length !== 2;
+    }
+
+    // Compare button
+    els.btnCompare.addEventListener('click', () => {
+        const checked = els.historyItems.querySelectorAll('.history-check:checked');
+        if (checked.length !== 2) return;
+
+        const history = getRunHistory();
+        const idx1 = parseInt(checked[0].dataset.idx);
+        const idx2 = parseInt(checked[1].dataset.idx);
+        const run1 = history[idx1];
+        const run2 = history[idx2];
+
+        if (!run1 || !run2) return;
+        showComparison(run1, run2);
+    });
+
+    function showComparison(run1, run2) {
+        const m1 = run1.data.metrics;
+        const m2 = run2.data.metrics;
+
+        const compareMetrics = [
+            { label: 'Total Return %', key: 'total_return_pct', fmt: v => v.toFixed(2) + '%' },
+            { label: 'Sharpe Ratio', key: 'sharpe_ratio', fmt: v => v.toFixed(4) },
+            { label: 'Max Drawdown %', key: 'max_drawdown_pct', fmt: v => v.toFixed(2) + '%', invert: true },
+            { label: 'Win Rate', key: 'win_rate', fmt: v => v.toFixed(1) + '%' },
+            { label: 'Profit Factor', key: 'profit_factor', fmt: v => v.toFixed(2) },
+            { label: 'Total Trades', key: 'total_trades', fmt: v => v.toFixed(0) },
+            { label: 'Expectancy', key: 'expectancy', fmt: v => v.toFixed(2) },
+            { label: 'Sortino Ratio', key: 'sortino_ratio', fmt: v => v.toFixed(4) },
+            { label: 'Avg Win', key: 'avg_win', fmt: v => '$' + v.toFixed(2) },
+            { label: 'Avg Loss', key: 'avg_loss', fmt: v => '$' + v.toFixed(2), invert: true },
+        ];
+
+        const rows = compareMetrics.map(cm => {
+            const v1 = m1[cm.key] || 0;
+            const v2 = m2[cm.key] || 0;
+            const delta = v2 - v1;
+            const better = cm.invert ? delta < 0 : delta > 0;
+            const deltaClass = Math.abs(delta) < 0.0001 ? '' : (better ? 'positive' : 'negative');
+            const arrow = Math.abs(delta) < 0.0001 ? '' : (better ? '&#9650;' : '&#9660;');
+
+            return `
+                <tr>
+                    <td style="font-weight:600">${cm.label}</td>
+                    <td>${cm.fmt(v1)}</td>
+                    <td>${cm.fmt(v2)}</td>
+                    <td class="compare-delta ${deltaClass}">${arrow} ${Math.abs(delta) < 0.0001 ? '-' : cm.fmt(Math.abs(delta))}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const dateStr1 = new Date(run1.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const dateStr2 = new Date(run2.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+        els.compareBody.innerHTML = `
+            <table class="compare-table">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>${run1.strategy}<br><small style="font-weight:400;color:var(--text-secondary)">${dateStr1}</small></th>
+                        <th>${run2.strategy}<br><small style="font-weight:400;color:var(--text-secondary)">${dateStr2}</small></th>
+                        <th>Delta</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+
+        els.compareOverlay.classList.add('visible');
+    }
+
+    els.compareClose.addEventListener('click', () => {
+        els.compareOverlay.classList.remove('visible');
+    });
+
+    els.compareOverlay.addEventListener('click', (e) => {
+        if (e.target === els.compareOverlay) {
+            els.compareOverlay.classList.remove('visible');
+        }
+    });
+
     // --- Optimize ---
     els.btnOptimize.addEventListener('click', async () => {
         if (!currentFile) { showError('Please upload or select a CSV file first'); return; }
         const strategy = els.strategySelect.value;
         if (!strategy) { showError('Please select a strategy'); return; }
+        if (!validateFields()) return;
 
         const payload = {
             strategy,
@@ -588,6 +1173,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.results.classList.remove('visible');
         els.optimizeResults.classList.remove('visible');
         startLoadingAnimation('optimize');
+        setButtonLoading(els.btnOptimize, 'Optimizing...');
         closeSidebarOnMobile();
 
         try {
@@ -600,6 +1186,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             stopLoadingAnimation();
             els.spinner.classList.remove('visible');
+            restoreButton(els.btnOptimize);
+            updateButtonStates();
         }
     });
 
@@ -707,6 +1295,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             runBacktest();
+        }
+        // Escape to close compare overlay
+        if (e.key === 'Escape') {
+            if (els.compareOverlay.classList.contains('visible')) {
+                els.compareOverlay.classList.remove('visible');
+            }
         }
     });
 

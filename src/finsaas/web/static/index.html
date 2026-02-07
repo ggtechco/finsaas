@@ -175,17 +175,6 @@
                 </div>
             </div>
 
-            <!-- Compare Overlay -->
-            <div class="compare-overlay" id="compareOverlay">
-                <div class="compare-modal">
-                    <div class="compare-modal-header">
-                        <span>Run Comparison</span>
-                        <button class="compare-modal-close" id="compareClose" aria-label="Close comparison">&times;</button>
-                    </div>
-                    <div class="compare-modal-body" id="compareBody"></div>
-                </div>
-            </div>
-
             <!-- Backtest Results -->
             <div class="results-view" id="results">
                 <!-- Export Toolbar -->
@@ -311,6 +300,17 @@
             <!-- Screen reader live region -->
             <div id="srAnnounce" class="sr-only" role="status" aria-live="polite"></div>
         </main>
+    </div>
+
+    <!-- Compare Overlay (body-level for proper fixed positioning) -->
+    <div class="compare-overlay" id="compareOverlay" style="display:none">
+        <div class="compare-modal">
+            <div class="compare-modal-header">
+                <span>Run Comparison</span>
+                <button class="compare-modal-close" id="compareClose" aria-label="Close comparison">&times;</button>
+            </div>
+            <div class="compare-modal-body" id="compareBody"></div>
+        </div>
     </div>
 
     <!-- Toast Container -->
